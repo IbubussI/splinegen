@@ -4,8 +4,8 @@
 #include <cstring>
 #include <format>
 
-#include "fixed.hpp"
-#include "math.hpp"
+#include "fpm/fixed.hpp"
+#include "fpm/math.hpp"
 
 namespace TV::Math {
     inline constexpr int FRACT_BITS = 10;

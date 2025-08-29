@@ -1,5 +1,5 @@
 #include "drawer.h"
-#include "spline.h"
+#include "../libs/tv/spline.h"
 #include "point.h"
 
 #include <SFML/Graphics.hpp>

@@ -7,7 +7,7 @@
 #include "pointTransformer.h"
 #include "drawer.h"
 #include "pointUtils.h"
-#include "spline.h"
+#include "tv/spline.h"
 #include "textContainer.h"
 
 

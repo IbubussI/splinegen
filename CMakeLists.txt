@@ -35,6 +35,8 @@ option(IMGUI_SFML_FIND_SFML "Use find_package to find SFML" OFF)
 option(IMGUI_SFML_IMGUI_DEMO "Build imgui_demo.cpp" ON)
 FetchContent_MakeAvailable(imgui-sfml)
 
-add_executable(splinegen main.cpp app.cpp drawer.cpp
-        TextContainer.h)
+include_directories(${CMAKE_SOURCE_DIR}/libs)
+
+add_executable(splinegen src/main.cpp src/app.cpp src/drawer.cpp
+        src/TextContainer.h)
 target_link_libraries(splinegen PRIVATE ImGui-SFML::ImGui-SFML)

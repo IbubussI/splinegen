@@ -2,7 +2,7 @@
 #include "boundsRect.h"
 #include "drawer.h"
 #include "pointTransformer.h"
-#include "tvmath.h"
+#include "../libs/tv/tvmath.h"
 #include "SFML/System/Clock.hpp"
 #include "SFML/System/Vector2.hpp"
 
