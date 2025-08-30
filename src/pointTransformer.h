@@ -14,8 +14,8 @@ public:
         return WindowPoint{
             TV::Math::toInt(TV::Math::rescale(point.x, mUserCoords.xMin, mUserCoords.xMax,
                                               mWindowCoords.xMin, mWindowCoords.xMax)),
-            TV::Math::toInt(TV::Math::rescale(point.y, mUserCoords.yMin, mUserCoords.yMax,
-                                              mWindowCoords.yMin, mWindowCoords.yMax))
+            TV::Math::toInt(mWindowCoords.yMax - TV::Math::rescale(point.y, mUserCoords.yMin, mUserCoords.yMax,
+                                                                   mWindowCoords.yMin, mWindowCoords.yMax))
         };
     }
 
@@ -23,7 +23,7 @@ public:
         return Point{
             TV::Math::rescale(TV::Math::Dec16{point.x}, mWindowCoords.xMin, mWindowCoords.xMax,
                               mUserCoords.xMin, mUserCoords.xMax),
-            TV::Math::rescale(TV::Math::Dec16{point.y}, mWindowCoords.yMin, mWindowCoords.yMax,
+            TV::Math::rescale(mWindowCoords.yMax - TV::Math::Dec16{point.y}, mWindowCoords.yMin, mWindowCoords.yMax,
                               mUserCoords.yMin, mUserCoords.yMax),
         };
     }

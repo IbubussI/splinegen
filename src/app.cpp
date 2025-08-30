@@ -18,8 +18,8 @@ App::App(sf::RenderWindow& window)
                     TV::Math::Dec16{0}, TV::Math::Dec16{window.getSize().y}),
       mCoordsTransformer(mUserCoords, mWindowCoords),
       mWindowPoints(std::vector{
-          WindowPoint(0, 0),
-          WindowPoint(window.getSize().x, window.getSize().y),
+          WindowPoint(0, window.getSize().y),
+          WindowPoint(window.getSize().x, 0),
       }),
       mWindow(window),
       mDrawer(Drawer(mWindow)) {
