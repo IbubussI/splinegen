@@ -1,6 +1,7 @@
 // ReSharper disable CppUE4CodingStandardNamingViolationWarning
 #pragma once
 #include <vector>
+#include <algorithm>
 #include "tvmath.h"
 
 namespace TV::Math {
