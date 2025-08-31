@@ -1,4 +1,7 @@
 #include "app.h"
+
+#include <ranges>
+
 #include "imgui.h"
 #include "imgui-SFML.h"
 #include <SFML/Graphics.hpp>
@@ -9,14 +12,14 @@
 #include "pointUtils.h"
 #include "tv/spline.h"
 #include "textContainer.h"
-
+#include "misc/cpp/imgui_stdlib.h";
 
 App::App(sf::RenderWindow& window)
     : mUserCoords(TV::Math::Dec16{0}, TV::Math::Dec16{100},
                   TV::Math::Dec16{0}, TV::Math::Dec16{100}),
       mWindowCoords(TV::Math::Dec16{0}, TV::Math::Dec16{window.getSize().x},
                     TV::Math::Dec16{0}, TV::Math::Dec16{window.getSize().y}),
-      mCoordsTransformer(mUserCoords, mWindowCoords),
+      mPointTransformer(mUserCoords, mWindowCoords),
       mWindowPoints(std::vector{
           WindowPoint(0, window.getSize().y),
           WindowPoint(window.getSize().x, 0),
@@ -25,6 +28,30 @@ App::App(sf::RenderWindow& window)
       mDrawer(Drawer(mWindow)) {
     mFrameContext.userPoints.push_back(Point{TV::Math::Dec16{0}, TV::Math::Dec16{0}});
     mFrameContext.userPoints.push_back(Point{TV::Math::Dec16{100}, TV::Math::Dec16{100}});
+}
+
+void App::initialPointsState() {
+    mWindowPoints = std::vector{
+        WindowPoint(0, mWindow.getSize().y),
+        WindowPoint(mWindow.getSize().x, 0),
+    };
+    mFrameContext.userPoints.clear();
+    mFrameContext.userPoints.push_back(Point{TV::Math::Dec16{mUserCoords.xMin}, TV::Math::Dec16{mUserCoords.yMin}});
+    mFrameContext.userPoints.push_back(Point{TV::Math::Dec16{mUserCoords.xMax}, TV::Math::Dec16{mUserCoords.yMax}});
+}
+
+void App::initialSettingsState() {
+    mUserCoords = BoundsRect{
+        TV::Math::Dec16{0}, TV::Math::Dec16{100},
+        TV::Math::Dec16{0}, TV::Math::Dec16{100}
+    };
+    mIsDrawRefLines = false;
+    mPointSize = 6;
+    mConPointSize = 3;
+    mLineThickness = 1;
+    mResolution = 500;
+    mSplineType = CubicMonotone;
+    refreshCoordinateSystem();
 }
 
 void App::run() {
@@ -74,30 +101,20 @@ void App::processWindowEvent(const sf::Event& event, const TV::Math::SplineFunct
     } else if (const auto* resized = event.getIf<Event::Resized>()) {
         // update the view to the new size of the window
         // incomplete: need to update knots to match new window size with the same scale
-        // resize is disabled
+        // resize is disabled in main
         const FloatRect visibleArea(Vector2f(0, 0), Vector2f(resized->size.x, resized->size.y));
         mWindow.setView(View(visibleArea));
         mWindowCoords = BoundsRect(TV::Math::Dec16{0}, TV::Math::Dec16{mWindow.getSize().x},
                                    TV::Math::Dec16{0}, TV::Math::Dec16{mWindow.getSize().y});
-        mCoordsTransformer = PointTransformer(mUserCoords, mWindowCoords);
-        mFrameContext.isUserModifiedPoints = true;
+        refreshCoordinateSystem();
     } else if (const auto* mousePressed = event.getIf<Event::MouseButtonPressed>()) {
         const Vector2i mousePos = Mouse::getPosition(mWindow);
         if (mousePressed->button == Mouse::Button::Left) {
             // check if click is on the point and start drag
             mFrameContext.dragPointIdx = findPointClicked(mousePos);
 
-            // check if click is on the spline
             if (mFrameContext.dragPointIdx == -1) {
-                std::pair<WindowPoint, int> result = findSplineClicked(spline, mousePos, mPointSize);
-                if (result.second != -1) {
-                    // insert new point
-                    modifyPoints([this, result] {
-                        mWindowPoints.insert(mWindowPoints.begin() + result.second, result.first);
-                    });
-                    // start drag
-                    mFrameContext.dragPointIdx = result.second;
-                }
+                tryInsertPoint(spline, mousePos);
             }
         } else if (mousePressed->button == Mouse::Button::Right) {
             if (mFrameContext.dragPointIdx == -1) {
@@ -114,15 +131,95 @@ void App::processWindowEvent(const sf::Event& event, const TV::Math::SplineFunct
 }
 
 void App::processGuiWidgets() {
+    using namespace TV::Math;
+
     ImGui::SFML::Update(mWindow, mFrameContext.deltaClock.restart());
     ImGui::Begin("Settings");
+    if (ImGui::Button("Reset Settings")) {
+        initialSettingsState();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Reset Points")) {
+        initialPointsState();
+    }
     ImGui::Checkbox("Draw Reference Lines", &mIsDrawRefLines);
-    ImGui::Combo("Spline Type", reinterpret_cast<int*>(&mSplineType),
-                 "Linear\0Cubic\0Cubic Monotone\0Parametric\0");
+    const bool isParametricBefore = isParametric(mSplineType);
+    if (ImGui::Combo("Spline Type", reinterpret_cast<int*>(&mSplineType),
+                     "Linear\0Cubic\0Cubic Monotone\0Parametric\0")) {
+        const bool isParametricAfter = isParametric(mSplineType);
+        if (isParametricBefore && !isParametricAfter) {
+            initialPointsState();
+        }
+    }
     ImGui::InputInt("Point Size", &mPointSize);
-    ImGui::InputInt("Scale", &mScale);
-    ImGui::InputInt("Resolution", &mResolution);
 
+    static bool isRawScale = false;
+    ImGui::Checkbox("Raw Scale Values", &isRawScale);
+    int yScale[2]{};
+    int xScale[2]{};
+    if (isRawScale) {
+        xScale[0] = mUserCoords.xMin.raw_value();
+        xScale[1] = mUserCoords.xMax.raw_value();
+        yScale[0] = mUserCoords.yMin.raw_value();
+        yScale[1] = mUserCoords.yMax.raw_value();
+    } else {
+        xScale[0] = toInt(mUserCoords.xMin);
+        xScale[1] = toInt(mUserCoords.xMax);
+        yScale[0] = toInt(mUserCoords.yMin);
+        yScale[1] = toInt(mUserCoords.yMax);
+    }
+    if (ImGui::InputInt2("XScale", xScale)) {
+        Dec16 newXMin;
+        Dec16 newXMax;
+        if (isRawScale) {
+            newXMin = Dec16::from_raw_value(xScale[0]);
+            newXMax = Dec16::from_raw_value(xScale[1]);
+        } else {
+            newXMin = Dec16{xScale[0]};
+            newXMax = Dec16{xScale[1]};
+        }
+
+        // validate bounds
+        if (newXMax - newXMin < Dec16{1}) {
+            if (mUserCoords.xMin != newXMin) {
+                newXMin = newXMax - Dec16{1};
+            }
+            if (mUserCoords.xMax != newXMax) {
+                newXMax = newXMin + Dec16{1};
+            }
+        }
+
+        mUserCoords.xMin = newXMin;
+        mUserCoords.xMax = newXMax;
+        refreshCoordinateSystem();
+    }
+    if (ImGui::InputInt2("YScale", yScale)) {
+        Dec16 newYMin;
+        Dec16 newYMax;
+        if (isRawScale) {
+            newYMin = Dec16::from_raw_value(yScale[0]);
+            newYMax = Dec16::from_raw_value(yScale[1]);
+        } else {
+            newYMin = Dec16{yScale[0]};
+            newYMax = Dec16{yScale[1]};
+        }
+
+        // validate bounds
+        if (newYMax - newYMin < Dec16{1}) {
+            if (mUserCoords.yMin != newYMin) {
+                newYMin = newYMax - Dec16{1};
+            } else {
+                newYMax = newYMin + Dec16{1};
+            }
+        }
+
+        mUserCoords.yMin = newYMin;
+        mUserCoords.yMax = newYMax;
+        refreshCoordinateSystem();
+    }
+
+    ImGui::InputInt("Resolution", &mResolution);
+    ImGui::Checkbox("Raw Point Values", &mIsRawValues);
 
     const auto xyStrings = captureCurrentPoints();
     TextContainer pointsText{};
@@ -133,8 +230,22 @@ void App::processGuiWidgets() {
 
     ImGui::Text("Points:");
     ImGui::Text(pointsText.getContent());
-    if (ImGui::Button("Copy Points")) {
-        ImGui::SetClipboardText(pointsText.getContent());
+    if (ImGui::Button("Copy X")) {
+        ImGui::SetClipboardText(xyStrings.first.c_str());
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Copy Y")) {
+        ImGui::SetClipboardText(xyStrings.second.c_str());
+    }
+
+    static bool isLoadRaw;
+    ImGui::Checkbox("Raw Scale Values", &isLoadRaw);
+    static std::string loadX;
+    static std::string loadY;
+    ImGui::InputText("Load X", &loadX);
+    ImGui::InputText("Load Y", &loadY);
+    if (ImGui::Button("Load Points")) {
+        setPoints(parsePoints(loadX, loadY, isLoadRaw));
     }
 
     ImGui::End();
@@ -166,6 +277,44 @@ void App::writeToContainer(TextContainer& container,
     const std::string formattedX = std::vformat(xFormat, std::make_format_args(xString));
     const std::string formattedY = std::vformat(yFormat, std::make_format_args(yString));
     container.update(formattedX + "\n" + formattedY);
+}
+
+void App::refreshCoordinateSystem() {
+    mPointTransformer = PointTransformer(mUserCoords, mWindowCoords);
+    mFrameContext.isUserModifiedPoints = true;
+}
+
+std::vector<Point> App::parsePoints(const std::string& xStr, const std::string& yStr, bool isRaw) {
+    std::string_view xView(xStr);
+    std::string_view yView(yStr);
+    std::vector<Point> result;
+    try {
+        std::vector<int> xVec;
+        for (const auto str: std::views::split(xView, ',')) {
+            xVec.push_back(std::stoi(str.data()));
+        }
+        std::vector<int> yVec;
+        for (const auto str: std::views::split(yView, ',')) {
+            yVec.push_back(std::stoi(str.data()));
+        }
+
+        if (xVec.size() == yVec.size()) {
+            for (int i = 0; i < xVec.size(); i++) {
+                TV::Math::Dec16 x;
+                TV::Math::Dec16 y;
+                if (isRaw) {
+                    x = TV::Math::Dec16::from_raw_value(xVec[i]);
+                    y = TV::Math::Dec16::from_raw_value(yVec[i]);
+                } else {
+                    x = TV::Math::Dec16{xVec[i]};
+                    y = TV::Math::Dec16{yVec[i]};
+                }
+                result.emplace_back(x, y);
+            }
+        }
+    } catch (...) {
+    }
+    return result;
 }
 
 TV::Math::SplineFunction* App::generateSpline(const std::vector<Point>& points) const {
@@ -210,7 +359,7 @@ std::vector<WindowPoint> App::generateIntermediatePoints(const TV::Math::SplineF
             mUserCoords.clampY(y)
         );
         // transform point to window coordinates
-        const WindowPoint p = mCoordsTransformer.userToWindow(userPoint);
+        const WindowPoint p = mPointTransformer.userToWindow(userPoint);
         iPoints.push_back(p);
     }
     return iPoints;
@@ -236,21 +385,20 @@ void App::updateDragLocation(const int dragIdx) {
     newDragPoint.x = std::clamp(mousePos.x, 0, windowXSize);
 
     // point movement restrictions
-    constexpr int minDelta = 5; // screen pixels, maybe there is a way to calculate it instead of hardcode
     if (isParametric(mSplineType)) {
         if (dragIdx != 0) {
             const WindowPoint prev = mWindowPoints[dragIdx - 1];
-            newDragPoint = SplGen::pointToPointCollide(newDragPoint, prev, minDelta);
+            newDragPoint = SplGen::pointToPointCollide(newDragPoint, prev, mXMinDelta);
         }
         if (dragIdx != mWindowPoints.size() - 1) {
             const WindowPoint next = mWindowPoints[dragIdx + 1];
-            newDragPoint = SplGen::pointToPointCollide(newDragPoint, next, minDelta);
+            newDragPoint = SplGen::pointToPointCollide(newDragPoint, next, mXMinDelta);
         }
     } else {
         // only move non-border points by X
         if (dragIdx != mWindowPoints.size() - 1 && dragIdx != 0) {
             newDragPoint = SplGen::pointRestrictX(newDragPoint, mWindowPoints[dragIdx + 1].x,
-                                                  mWindowPoints[dragIdx - 1].x, minDelta);
+                                                  mWindowPoints[dragIdx - 1].x, mXMinDelta);
         } else {
             newDragPoint.x = dragPoint.x;
         }
@@ -275,6 +423,8 @@ int App::findPointClicked(const sf::Vector2i mousePos) const {
     return result;
 }
 
+// returns click position and the knot index after which the click occurred
+// or -1 if the click was too far from the spline
 std::pair<WindowPoint, int> App::findSplineClicked(const TV::Math::SplineFunction* spline,
                                                    const sf::Vector2i mousePos,
                                                    const int dist) const {
@@ -289,7 +439,7 @@ std::pair<WindowPoint, int> App::findSplineClicked(const TV::Math::SplineFunctio
         mUserCoords.clampX(x),
         mUserCoords.clampY(y)
     );
-    WindowPoint prev = mCoordsTransformer.userToWindow(userPrev);
+    WindowPoint prev = mPointTransformer.userToWindow(userPrev);
     for (Dec16 ci = cMin; ci <= cMax; ci += step) {
         const auto [x, y] = spline->value(ci);
         const Point userCurr(
@@ -297,7 +447,7 @@ std::pair<WindowPoint, int> App::findSplineClicked(const TV::Math::SplineFunctio
             mUserCoords.clampY(y)
         );
 
-        const WindowPoint curr = mCoordsTransformer.userToWindow(userCurr);
+        const WindowPoint curr = mPointTransformer.userToWindow(userCurr);
         const WindowPoint mouse = WindowPoint(mousePos.x, mousePos.y);
         if (SplGen::pointToLineSegmentCollide(prev, curr, mouse, dist)) {
             return std::pair{mouse, spline->getClosestKnotIndex(ci)};
@@ -305,6 +455,26 @@ std::pair<WindowPoint, int> App::findSplineClicked(const TV::Math::SplineFunctio
         prev = curr;
     }
     return std::pair{WindowPoint{}, -1};
+}
+
+void App::tryInsertPoint(const TV::Math::SplineFunction* spline, const sf::Vector2i mousePos) {
+    // check if click is on the spline
+    std::pair<WindowPoint, int> result = findSplineClicked(spline, mousePos, mPointSize);
+    if (result.second != -1) {
+        const WindowPoint clickLocation = result.first;
+        const int knotIndex = result.second;
+        const bool isParametricSpline = isParametric(mSplineType);
+        const bool prevAllows = clickLocation.x - mWindowPoints[knotIndex - 1].x >= mXMinDelta;
+        const bool nextAllows = mWindowPoints[knotIndex].x - clickLocation.x >= mXMinDelta;
+        if (isParametricSpline || prevAllows && nextAllows) {
+            // insert new point
+            modifyPoints([this, knotIndex, clickLocation] {
+                mWindowPoints.insert(mWindowPoints.begin() + knotIndex, clickLocation);
+            });
+            // start drag
+            mFrameContext.dragPointIdx = result.second;
+        }
+    }
 }
 
 void App::removePoint(const int idx) {
@@ -320,13 +490,22 @@ void App::modifyPoints(const std::function<void()>& modFunc) {
     mFrameContext.isUserModifiedPoints = true;
 }
 
+void App::setPoints(const std::vector<Point>& newPoints) {
+    mWindowPoints.resize(newPoints.size());
+    std::transform(newPoints.begin(), newPoints.end(), mWindowPoints.begin(),
+                   [this](const Point p) {
+                       return mPointTransformer.userToWindow(p);
+                   });
+    mFrameContext.isUserModifiedPoints = true;
+}
+
 std::vector<Point> App::getUserPoints() {
     std::vector<Point>& userPoints = mFrameContext.userPoints;
     if (mFrameContext.isUserModifiedPoints) {
         userPoints.resize(mWindowPoints.size());
         std::transform(mWindowPoints.begin(), mWindowPoints.end(), userPoints.begin(),
                        [this](const WindowPoint p) {
-                           return mCoordsTransformer.windowToUser(p);
+                           return mPointTransformer.windowToUser(p);
                        });
         mFrameContext.isUserModifiedPoints = false;
     }

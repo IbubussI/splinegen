@@ -50,13 +50,21 @@ private:
     std::pair<WindowPoint, int> findSplineClicked(const TV::Math::SplineFunction* spline,
                                                   sf::Vector2i mousePos, int dist) const;
 
+    void tryInsertPoint(const TV::Math::SplineFunction* spline, sf::Vector2i mousePos);
+
     void removePoint(int idx);
 
     void processWindowEvent(const sf::Event& event, const TV::Math::SplineFunction* spline);
 
     void modifyPoints(const std::function<void()>& modFunc);
 
+    void setPoints(const std::vector<Point>& newPoints);
+
     std::vector<Point> getUserPoints();
+
+    void initialPointsState();
+
+    void initialSettingsState();
 
     void processGuiWidgets();
 
@@ -66,24 +74,30 @@ private:
                                  const std::string& xFormat, const std::string& xString,
                                  const std::string& yFormat, const std::string& yString);
 
+    void refreshCoordinateSystem();
+
+    static std::vector<Point> parsePoints(const std::string& xStr, const std::string& yStr, bool isRaw);
+
     bool mIsDrawRefLines = false;
     int mPointSize = 6;
     int mConPointSize = 3;
     int mLineThickness = 1;
     // limits for spline normalized coordinates
-    // changing this - a bad idea: low values introduce error for little x deltas
+    // changing it - bad idea: low values introduce error for little x deltas
     // high values overflow integral part during calculations
     int mScale = 15;
+    // screen pixels withing which it would be impossible to move point closer
+    // maybe there is a way to calculate it instead of hardcode
+    int mXMinDelta = 5;
     // number of intermediate points on the screen
-    int mResolution = 100;
-    SplineType mSplineType = Parametric;
-
+    int mResolution = 500;
+    SplineType mSplineType = CubicMonotone;
     bool mIsRawValues = false;
 
     // app has 3 coordinate systems: user defined coords, screen coords and spline internal (normalized) coords
     BoundsRect<TV::Math::Dec16> mUserCoords;
     BoundsRect<TV::Math::Dec16> mWindowCoords;
-    PointTransformer mCoordsTransformer;
+    PointTransformer mPointTransformer;
 
     std::vector<WindowPoint> mWindowPoints;
 
