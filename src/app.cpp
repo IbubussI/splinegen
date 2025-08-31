@@ -49,7 +49,7 @@ void App::initialSettingsState() {
     mPointSize = 6;
     mConPointSize = 3;
     mLineThickness = 1;
-    mResolution = 500;
+    mResolution = 100;
     mSplineType = CubicMonotone;
     refreshCoordinateSystem();
 }
@@ -63,6 +63,8 @@ void App::run() {
         const SplineFunction* spline = generateSpline(userKnots);
         // intermediate points
         std::vector<WindowPoint> points = generateIntermediatePoints(spline);
+        const Vector2i mousePos = Mouse::getPosition(mWindow);
+        const int hoveringPoint = findPointUnderCursor(mousePos);
 
         ImGuiIO& io = ImGui::GetIO();
         while (const std::optional eventOpt = mWindow.pollEvent()) {
@@ -73,27 +75,30 @@ void App::run() {
                     // pass events to GUI
                     continue;
                 }
-                processWindowEvent(event, spline);
+                processWindowEvent(event, spline, hoveringPoint);
             }
         }
 
         updateDragLocation(mFrameContext.dragPointIdx);
-
-        processGuiWidgets();
 
         mDrawer.setDrawRefLines(mIsDrawRefLines);
         mDrawer.setConPointSize(mConPointSize);
         mDrawer.setPointSize(mPointSize);
         mDrawer.draw(mWindowPoints, points);
 
+        ImGui::SFML::Update(mWindow, mFrameContext.deltaClock.restart());
+        drawGuiWidgets();
+        updateMouseTooltip(hoveringPoint, userKnots);
+        //ImGui::ShowDemoWindow();
         ImGui::SFML::Render(mWindow);
+
         mWindow.display();
 
         delete spline;
     }
 }
 
-void App::processWindowEvent(const sf::Event& event, const TV::Math::SplineFunction* spline) {
+void App::processWindowEvent(const sf::Event& event, const TV::Math::SplineFunction* spline, const int hoveringPoint) {
     using namespace sf;
 
     if (event.is<Event::Closed>()) {
@@ -108,18 +113,16 @@ void App::processWindowEvent(const sf::Event& event, const TV::Math::SplineFunct
                                    TV::Math::Dec16{0}, TV::Math::Dec16{mWindow.getSize().y});
         refreshCoordinateSystem();
     } else if (const auto* mousePressed = event.getIf<Event::MouseButtonPressed>()) {
-        const Vector2i mousePos = Mouse::getPosition(mWindow);
         if (mousePressed->button == Mouse::Button::Left) {
-            // check if click is on the point and start drag
-            mFrameContext.dragPointIdx = findPointClicked(mousePos);
-
-            if (mFrameContext.dragPointIdx == -1) {
-                tryInsertPoint(spline, mousePos);
+            // if click is on the point - start drag, otherwise try to insert point
+            if (hoveringPoint != -1) {
+                mFrameContext.dragPointIdx = hoveringPoint;
+            } else {
+                tryInsertPoint(spline, Mouse::getPosition(mWindow));
             }
         } else if (mousePressed->button == Mouse::Button::Right) {
-            if (mFrameContext.dragPointIdx == -1) {
-                const int idx = findPointClicked(mousePos);
-                removePoint(idx);
+            if (mFrameContext.dragPointIdx == -1 && hoveringPoint != -1) {
+                removePoint(hoveringPoint);
             }
         }
     } else if (const auto* mouseReleased = event.getIf<Event::MouseButtonReleased>()) {
@@ -130,10 +133,9 @@ void App::processWindowEvent(const sf::Event& event, const TV::Math::SplineFunct
     }
 }
 
-void App::processGuiWidgets() {
+void App::drawGuiWidgets() {
     using namespace TV::Math;
 
-    ImGui::SFML::Update(mWindow, mFrameContext.deltaClock.restart());
     ImGui::Begin("Settings");
     if (ImGui::Button("Reset Settings")) {
         initialSettingsState();
@@ -153,11 +155,10 @@ void App::processGuiWidgets() {
     }
     ImGui::InputInt("Point Size", &mPointSize);
 
-    static bool isRawScale = false;
-    ImGui::Checkbox("Raw Scale Values", &isRawScale);
+    ImGui::Checkbox("Use Raw Values", &mIsRawValues);
     int yScale[2]{};
     int xScale[2]{};
-    if (isRawScale) {
+    if (mIsRawValues) {
         xScale[0] = mUserCoords.xMin.raw_value();
         xScale[1] = mUserCoords.xMax.raw_value();
         yScale[0] = mUserCoords.yMin.raw_value();
@@ -171,7 +172,7 @@ void App::processGuiWidgets() {
     if (ImGui::InputInt2("XScale", xScale)) {
         Dec16 newXMin;
         Dec16 newXMax;
-        if (isRawScale) {
+        if (mIsRawValues) {
             newXMin = Dec16::from_raw_value(xScale[0]);
             newXMax = Dec16::from_raw_value(xScale[1]);
         } else {
@@ -196,7 +197,7 @@ void App::processGuiWidgets() {
     if (ImGui::InputInt2("YScale", yScale)) {
         Dec16 newYMin;
         Dec16 newYMax;
-        if (isRawScale) {
+        if (mIsRawValues) {
             newYMin = Dec16::from_raw_value(yScale[0]);
             newYMax = Dec16::from_raw_value(yScale[1]);
         } else {
@@ -219,8 +220,6 @@ void App::processGuiWidgets() {
     }
 
     ImGui::InputInt("Resolution", &mResolution);
-    ImGui::Checkbox("Raw Point Values", &mIsRawValues);
-
     const auto xyStrings = captureCurrentPoints();
     TextContainer pointsText{};
     TextContainer pointsCode{};
@@ -229,7 +228,9 @@ void App::processGuiWidgets() {
                      "y: {}", xyStrings.second);
 
     ImGui::Text("Points:");
+    ImGui::Indent();
     ImGui::Text(pointsText.getContent());
+    ImGui::Unindent();
     if (ImGui::Button("Copy X")) {
         ImGui::SetClipboardText(xyStrings.first.c_str());
     }
@@ -238,19 +239,15 @@ void App::processGuiWidgets() {
         ImGui::SetClipboardText(xyStrings.second.c_str());
     }
 
-    static bool isLoadRaw;
-    ImGui::Checkbox("Raw Scale Values", &isLoadRaw);
     static std::string loadX;
     static std::string loadY;
     ImGui::InputText("Load X", &loadX);
     ImGui::InputText("Load Y", &loadY);
     if (ImGui::Button("Load Points")) {
-        setPoints(parsePoints(loadX, loadY, isLoadRaw));
+        setPoints(parsePoints(loadX, loadY));
     }
 
     ImGui::End();
-
-    //ImGui::ShowDemoWindow();
 }
 
 std::pair<std::string, std::string> App::captureCurrentPoints() {
@@ -284,7 +281,7 @@ void App::refreshCoordinateSystem() {
     mFrameContext.isUserModifiedPoints = true;
 }
 
-std::vector<Point> App::parsePoints(const std::string& xStr, const std::string& yStr, bool isRaw) {
+std::vector<Point> App::parsePoints(const std::string& xStr, const std::string& yStr) const {
     std::string_view xView(xStr);
     std::string_view yView(yStr);
     std::vector<Point> result;
@@ -302,7 +299,7 @@ std::vector<Point> App::parsePoints(const std::string& xStr, const std::string& 
             for (int i = 0; i < xVec.size(); i++) {
                 TV::Math::Dec16 x;
                 TV::Math::Dec16 y;
-                if (isRaw) {
+                if (mIsRawValues) {
                     x = TV::Math::Dec16::from_raw_value(xVec[i]);
                     y = TV::Math::Dec16::from_raw_value(yVec[i]);
                 } else {
@@ -315,6 +312,28 @@ std::vector<Point> App::parsePoints(const std::string& xStr, const std::string& 
     } catch (...) {
     }
     return result;
+}
+
+void App::updateMouseTooltip(const int hoveringPoint, const std::vector<Point>& userKnots) const {
+    const int pointIdx = mFrameContext.dragPointIdx != -1 ? mFrameContext.dragPointIdx : hoveringPoint;
+    if (pointIdx != -1) {
+        const Point point = userKnots[pointIdx];
+        int x;
+        int y;
+        if (mIsRawValues) {
+            x = point.x.raw_value();
+            y = point.y.raw_value();
+        } else {
+            x = TV::Math::toInt(point.x);
+            y = TV::Math::toInt(point.y);
+        }
+        const std::string tooltip = std::format("{}, {}", x, y);
+
+        ImGui::BeginTooltip();
+        ImGui::Text(tooltip.c_str());
+        ImGui::EndTooltip();
+    }
+
 }
 
 TV::Math::SplineFunction* App::generateSpline(const std::vector<Point>& points) const {
@@ -410,7 +429,7 @@ void App::updateDragLocation(const int dragIdx) {
     });
 }
 
-int App::findPointClicked(const sf::Vector2i mousePos) const {
+int App::findPointUnderCursor(const sf::Vector2i mousePos) const {
     using namespace sf;
 
     int result = -1;
@@ -478,7 +497,7 @@ void App::tryInsertPoint(const TV::Math::SplineFunction* spline, const sf::Vecto
 }
 
 void App::removePoint(const int idx) {
-    if (idx != -1 && mWindowPoints.size() > 2) {
+    if (mWindowPoints.size() > 2) {
         if (isParametric(mSplineType) || (idx != mWindowPoints.size() - 1 && idx != 0)) {
             modifyPoints([this, idx] { mWindowPoints.erase(mWindowPoints.begin() + idx); });
         }

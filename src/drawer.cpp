@@ -8,12 +8,16 @@ Drawer::Drawer(sf::RenderWindow& window)
     : mWindow(window) {
 }
 
-void Drawer::draw(const std::vector<WindowPoint>& knotPoints, const std::vector<WindowPoint>& intermediatePoints) const {
+void Drawer::draw(const std::vector<WindowPoint>& knotPoints,
+                  const std::vector<WindowPoint>& intermediatePoints) const {
     using namespace TV::Math;
     using namespace sf;
 
     // fill background
     mWindow.clear(Color(0x1f1f1fff));
+
+    // Draw grid
+    drawGridBackground(100, 100, Color(0x323232ff));
 
     // draw reference lines
     if (mIsDrawRefLines) {
@@ -47,5 +51,28 @@ void Drawer::draw(const std::vector<WindowPoint>& knotPoints, const std::vector<
         point.setOrigin(Vector2f(mPointSize, mPointSize));
         point.setPosition(Vector2f(x, y));
         mWindow.draw(point);
+    }
+}
+
+void Drawer::drawGridBackground(const int cellWidth, const int cellHeight, const sf::Color color) const {
+    using namespace sf;
+
+    const int rowsNum = mWindow.getSize().x / cellWidth;
+    const int colsNum = mWindow.getSize().y / cellHeight;
+
+    // Draw horizontal lines
+    for (int i = 0; i <= rowsNum; ++i) {
+        RectangleShape line(Vector2f(rowsNum * cellWidth, 1));
+        line.setPosition(Vector2f(0, i * cellWidth));
+        line.setFillColor(color);
+        mWindow.draw(line);
+    }
+
+    // Draw vertical lines
+    for (int i = 0; i <= colsNum; ++i) {
+        RectangleShape line(Vector2f(1, colsNum * cellHeight));
+        line.setPosition(Vector2f(i * cellHeight, 0));
+        line.setFillColor(color);
+        mWindow.draw(line);
     }
 }

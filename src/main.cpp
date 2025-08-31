@@ -5,7 +5,7 @@
 int main() {
     using namespace sf;
     using namespace TV::Math;
-    RenderWindow window(VideoMode(Vector2u{800, 800}), "Spline Generator", Style::Titlebar | Style::Close);
+    RenderWindow window(VideoMode(Vector2u{1000, 1000}), "Spline Generator", Style::Titlebar | Style::Close);
     window.setFramerateLimit(60);
     if (!ImGui::SFML::Init(window)) return -1;
 

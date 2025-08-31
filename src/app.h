@@ -45,7 +45,7 @@ private:
 
     void updateDragLocation(int dragIdx);
 
-    [[nodiscard]] int findPointClicked(sf::Vector2i mousePos) const;
+    [[nodiscard]] int findPointUnderCursor(sf::Vector2i mousePos) const;
 
     std::pair<WindowPoint, int> findSplineClicked(const TV::Math::SplineFunction* spline,
                                                   sf::Vector2i mousePos, int dist) const;
@@ -54,7 +54,7 @@ private:
 
     void removePoint(int idx);
 
-    void processWindowEvent(const sf::Event& event, const TV::Math::SplineFunction* spline);
+    void processWindowEvent(const sf::Event& event, const TV::Math::SplineFunction* spline, int hoveringPoint);
 
     void modifyPoints(const std::function<void()>& modFunc);
 
@@ -66,7 +66,7 @@ private:
 
     void initialSettingsState();
 
-    void processGuiWidgets();
+    void drawGuiWidgets();
 
     std::pair<std::string, std::string> captureCurrentPoints();
 
@@ -76,7 +76,9 @@ private:
 
     void refreshCoordinateSystem();
 
-    static std::vector<Point> parsePoints(const std::string& xStr, const std::string& yStr, bool isRaw);
+    std::vector<Point> parsePoints(const std::string& xStr, const std::string& yStr) const;
+
+    void updateMouseTooltip(int hoveringPoint, const std::vector<Point>& userKnots) const;
 
     bool mIsDrawRefLines = false;
     int mPointSize = 6;
@@ -90,7 +92,7 @@ private:
     // maybe there is a way to calculate it instead of hardcode
     int mXMinDelta = 5;
     // number of intermediate points on the screen
-    int mResolution = 500;
+    int mResolution = 100;
     SplineType mSplineType = CubicMonotone;
     bool mIsRawValues = false;
 

@@ -1,6 +1,8 @@
 #pragma once
 #include <vector>
 
+#include "SFML/Graphics/Color.hpp"
+
 struct WindowPoint;
 
 namespace TV::Math {
@@ -43,4 +45,6 @@ private:
     int mLineThickness = 1;
     int mPointSize = 6;
     int mConPointSize = 1;
+
+    void drawGridBackground(int cellWidth, int cellHeight, sf::Color color) const;
 };
