@@ -51,6 +51,7 @@ void App::initialSettingsState() {
     mLineThickness = 1;
     mResolution = 100;
     mSplineType = CubicMonotone;
+    mIsRawValues = false;
     refreshCoordinateSystem();
 }
 
@@ -169,7 +170,7 @@ void App::drawGuiWidgets() {
         yScale[0] = toInt(mUserCoords.yMin);
         yScale[1] = toInt(mUserCoords.yMax);
     }
-    if (ImGui::InputInt2("XScale", xScale)) {
+    if (ImGui::InputInt2("Scale X", xScale)) {
         Dec16 newXMin;
         Dec16 newXMax;
         if (mIsRawValues) {
@@ -194,7 +195,7 @@ void App::drawGuiWidgets() {
         mUserCoords.xMax = newXMax;
         refreshCoordinateSystem();
     }
-    if (ImGui::InputInt2("YScale", yScale)) {
+    if (ImGui::InputInt2("Scale Y", yScale)) {
         Dec16 newYMin;
         Dec16 newYMax;
         if (mIsRawValues) {
@@ -224,8 +225,8 @@ void App::drawGuiWidgets() {
     TextContainer pointsText{};
     TextContainer pointsCode{};
     writeToContainer(pointsText,
-                     "x: {}", xyStrings.first,
-                     "y: {}", xyStrings.second);
+                     "X: {}", xyStrings.first,
+                     "Y: {}", xyStrings.second);
 
     ImGui::Text("Points:");
     ImGui::Indent();
