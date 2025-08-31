@@ -12,7 +12,7 @@
 #include "pointUtils.h"
 #include "tv/spline.h"
 #include "textContainer.h"
-#include "misc/cpp/imgui_stdlib.h";
+#include "misc/cpp/imgui_stdlib.h"
 
 App::App(sf::RenderWindow& window)
     : mUserCoords(TV::Math::Dec16{0}, TV::Math::Dec16{100},
