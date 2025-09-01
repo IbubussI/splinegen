@@ -7,9 +7,7 @@
 namespace TV::Math {
     // 16-16 scheme is imprecise, since it can easily overflow integral part
     // while calculating "d" coefficient for cubic splines for small intervals by x.
-    // To mitigate this wider type, e.g. fixed<int64, int128, 24> type can be used
-
-    // Function that perform interpolation of a point by polynome coefficients
+    // To mitigate this wider type, e.g. fixed<int64, int128, 24> can be used
 
     class SplineFunction {
     public:
@@ -25,6 +23,7 @@ namespace TV::Math {
         [[nodiscard]] virtual int getClosestKnotIndex(Dec16 coord) const = 0;
     };
 
+    // Function that perform interpolation of a point by polynome coefficients
     class PolynomialSplineFunction final : public SplineFunction {
     public:
         PolynomialSplineFunction(std::vector<Dec16> knots, std::vector<std::vector<Dec16>> polynomials,
